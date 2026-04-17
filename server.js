@@ -11,10 +11,11 @@ app.get("/", (req, res) => {
 app.get("/ical", (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "Paramètre url manquant" });
-  const allowed = ["airbnb.com", "booking.com", "airbnb.fr"];
-  if (!allowed.some((d) => url.includes(d))) return res.status(403).json({ error: "Domaine non autorisé" });
-  const client = url.startsWith("https") ? https : http;
-  client.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (proxyRes) => {
+  const allowed = ["airbnb.com", "airbnb.fr", "booking.com", "vrbo.com", "homeaway.com"];
+  const decoded = decodeURIComponent(url);
+  if (!allowed.some((d) => decoded.includes(d))) return res.status(403).json({ error: "Domaine non autorisé" });
+  const client = decoded.startsWith("https") ? https : http;
+  client.get(decoded, { headers: { "User-Agent": "Mozilla/5.0" } }, (proxyRes) => {
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
     proxyRes.pipe(res);
   }).on("error", (err) => res.status(500).json({ error: err.message }));
