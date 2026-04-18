@@ -214,8 +214,10 @@ hr{border:none;border-top:1px solid #2e2c2a;margin:16px 0}
     <div id="tab-synchro" style="display:none">
       <div class="ph"><h1>Synchronisation iCal</h1><p>Connectez Airbnb & Booking.com</p></div>
       <div class="info-box">
-        <div style="font-weight:600;color:#5d9e7a;margin-bottom:3px">Proxy connecté ✓</div>
+        <div style="font-weight:600;color:#5d9e7a;margin-bottom:3px">Proxy connecté ✓ — Synchro automatique toutes les heures</div>
         <div style="color:#7a7570;font-size:12px;margin-top:2px">https://conciergerie-raymond.onrender.com</div>
+        <div style="color:#7a7570;font-size:11px;margin-top:6px" id="lastSync">Dernière synchro : jamais</div>
+        <button class="btn bg2 bs" style="margin-top:8px" onclick="autoSync()">🔄 Synchroniser maintenant</button>
       </div>
       <div id="syncList"></div>
       <div style="font-size:12px;color:#7a7570;margin-top:8px">Airbnb → Calendrier → Exporter · Booking → Extranet → Calendrier → Synchronisation</div>
@@ -237,8 +239,10 @@ let reservations = [
   {id:4,lid:1,voy:"Paul Bernard",ci:"2026-04-15",co:"2026-04-17",mt:180,st:"en attente",pl:"Direct"},
   {id:5,lid:4,voy:"Lucie Moreau",ci:"2026-04-02",co:"2026-04-04",mt:160,st:"terminée",pl:"Airbnb"},
 ];
-let icals={1:{airbnb:"",booking:""},2:{airbnb:"",booking:""},3:{airbnb:"",booking:""},4:{airbnb:"",booking:""}};
-let checked={};let msgData={};let currentFilter="toutes";
+let icals=JSON.parse(localStorage.getItem('cr_icals')||'{"1":{"airbnb":"","booking":""},"2":{"airbnb":"","booking":""},"3":{"airbnb":"","booking":""},"4":{"airbnb":"","booking":""}}');
+let checked=JSON.parse(localStorage.getItem('cr_checked')||'{}');let msgData={};let currentFilter="toutes";
+function saveIcals(){localStorage.setItem('cr_icals',JSON.stringify(icals));}
+function saveChecked(){localStorage.setItem('cr_checked',JSON.stringify(checked));}
 
 function fmtDate(s){return new Date(s).toLocaleDateString("fr-FR",{day:"2-digit",month:"short"})}
 function nights(ci,co){return Math.round((new Date(co)-new Date(ci))/86400000)}
@@ -259,7 +263,7 @@ function renderRes(filter){
     const log=LOGEMENTS.find(l=>l.id===r.lid);
     const pc=r.pl==="Airbnb"?"pa":r.pl==="Booking"?"pk":"pd";
     const bc=r.st==="confirmée"?"bg":r.st==="en attente"?"bo":"bm";
-    return`<tr><td><span style="font-weight:500">${r.voy}</span></td><td><span style="font-size:12px">${log?.nom}</span></td><td><span style="font-size:11px;color:#7a7570">${fmtDate(r.ci)} → ${fmtDate(r.co)}</span></td><td style="color:#7a7570;font-size:12px">${nights(r.ci,r.co)}n</td><td><span style="font-family:'DM Serif Display',serif;color:#c8a96e">${r.mt>0?r.mt+" €":"—"}</span></td><td><span class="pb ${pc}">${r.pl}</span></td><td><span class="badge ${bc}">${r.st}</span></td></tr>`;
+    return`<tr><td><span style="font-weight:500">${r.voy}</span></td><td><span style="font-size:12px">${log?.nom}</span></td><td><span style="font-size:11px;color:#7a7570">${fmtDate(r.ci)} → ${fmtDate(r.co)}</span></td><td style="color:#7a7570;font-size:12px">${nights(r.ci,r.co)}n</td><td><input type="number" value="${r.mt||""}" placeholder="0" min="0" onchange="updateMt(${r.id},this.value)" style="background:transparent;border:none;border-bottom:1px solid #2e2c2a;color:#c8a96e;font-family:'DM Serif Display',serif;font-size:14px;width:70px;padding:2px 4px;text-align:right"> €</td><td><span class="pb ${pc}">${r.pl}</span></td><td><span class="badge ${bc}">${r.st}</span></td></tr>`;
   }).join("");
   updateStats();
 }
@@ -322,8 +326,8 @@ function renderMenage(){
   }).join("");
 }
 
-function toggleCheck(lid,item){const k=`${lid}-${item}`;checked[k]=!checked[k];renderMenage();}
-function resetMenage(){const lid=parseInt(document.getElementById("menageSelect").value);CHECKLIST.forEach(i=>{delete checked[`${lid}-${i}`]});renderMenage();}
+function toggleCheck(lid,item){const k=`${lid}-${item}`;checked[k]=!checked[k];saveChecked();renderMenage();}
+function resetMenage(){const lid=parseInt(document.getElementById("menageSelect").value);CHECKLIST.forEach(i=>{delete checked[`${lid}-${i}`]});saveChecked();renderMenage();}
 
 function renderRevenus(){
   const max=Math.max(...REVENUS.map(r=>r.a+r.k+r.d));
@@ -340,7 +344,7 @@ function renderSync(){
         ${["Airbnb","Booking"].map(pl=>`
           <div>
             <div style="font-size:11px;color:#7a7570;margin-bottom:5px;text-transform:uppercase;letter-spacing:.08em">URL iCal ${pl}</div>
-            <input type="text" id="ical_${log.id}_${pl}" placeholder="https://..." value="${icals[log.id][pl.toLowerCase()]}" oninput="icals[${log.id}]['${pl.toLowerCase()}']=this.value">
+            <input type="text" id="ical_${log.id}_${pl}" placeholder="https://..." value="${icals[log.id][pl.toLowerCase()]}" oninput="icals[${log.id}]['${pl.toLowerCase()}']=this.value;saveIcals()">
             <div style="margin-top:7px;display:flex;gap:7px;align-items:center;flex-wrap:wrap">
               <button class="btn bp bs" onclick="syncIcal(${log.id},'${pl}')">🔄 Synchroniser</button>
               <span id="syncSt_${log.id}_${pl}"></span>
@@ -354,7 +358,7 @@ async function syncIcal(lid,pl){
   const url=icals[lid][pl.toLowerCase()];
   if(!url){document.getElementById(`syncSt_${lid}_${pl}`).innerHTML='<span class="er">✗ URL vide</span>';return;}
   const st=document.getElementById(`syncSt_${lid}_${pl}`);
-  st.innerHTML='<span style="color:#7a7570;font-size:11px"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+  if(st)st.innerHTML='<span style="color:#7a7570;font-size:11px"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
   try{
     const res=await fetch(`${PROXY}/ical?url=${encodeURIComponent(url)}`);
     if(!res.ok){const d=await res.json().catch(()=>({}));throw new Error(d.error||`HTTP ${res.status}`);}
@@ -363,9 +367,20 @@ async function syncIcal(lid,pl){
     const evts=parseIcal(txt,lid,pl);
     reservations=reservations.filter(r=>!(r.lid===lid&&r.pl===pl));
     reservations=[...reservations,...evts];
-    st.innerHTML=`<span class="ok">✓ ${evts.length} réservation(s)</span>`;
+    const now=new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+    if(st)st.innerHTML=`<span class="ok">✓ ${evts.length} résa · ${now}</span>`;
     renderRes(currentFilter);renderMsgs();renderMenage();updateStats();
-  }catch(e){st.innerHTML=`<span class="er">✗ ${e.message}</span>`;}
+  }catch(e){if(st)st.innerHTML=`<span class="er">✗ ${e.message}</span>`;}
+}
+
+async function autoSync(){
+  for(const log of LOGEMENTS){
+    for(const pl of ["Airbnb","Booking"]){
+      const url=icals[log.id][pl.toLowerCase()];
+      if(url)await syncIcal(log.id,pl);
+    }
+  }
+  document.getElementById("lastSync").textContent="Dernière synchro : "+new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
 }
 
 function parseIcal(txt,lid,pl){
@@ -375,11 +390,19 @@ function parseIcal(txt,lid,pl){
     const ds=get("DTSTART"),de=get("DTEND"),sm=get("SUMMARY")||"";
     if(!ds||!de)return;
     const pd=d=>{const s=d.replace(/T.*/,"");return`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;};
-    const voy=sm.replace(/AIRBNB|BOOKING|Reserved|Blocked|Not available/gi,"").trim();
-    if(!voy||voy.length<2)return;
+    const raw=sm.trim();
+    const isBlocked=/not available|indisponible|blocked|fermé/i.test(raw);
+    if(isBlocked)return;
+    const voy=raw.replace(/reserved|airbnb|booking/gi,"").trim()||"Voyageur";
     evts.push({id:Date.now()+i,lid,voy,ci:pd(ds),co:pd(de),mt:0,st:"confirmée",pl});
   });
   return evts;
+}
+
+function updateMt(id,val){
+  const r=reservations.find(r=>r.id===id);
+  if(r)r.mt=parseInt(val)||0;
+  updateStats();
 }
 
 function showTab(id,btn){
@@ -406,6 +429,10 @@ function toggleSidebar(){
 
 renderRes("toutes");
 renderMenage();
+
+// Synchro automatique au chargement + toutes les heures
+setTimeout(()=>autoSync(), 2000);
+setInterval(()=>autoSync(), 60*60*1000);
 </script>
 </body>
 </html>
