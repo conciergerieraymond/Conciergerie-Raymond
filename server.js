@@ -14,16 +14,20 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", service: "iCal Proxy - Conciergerie Raymond" });
 });
 app.get("/ical", (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: "Paramètre url manquant" });
-  const decoded = decodeURIComponent(url);
+  const rawUrl = req.query.url;
+  if (!rawUrl) return res.status(400).json({ error: "Paramètre url manquant" });
+  let decoded = rawUrl;
+  try { decoded = decodeURIComponent(rawUrl); } catch(e) {}
+  try { decoded = decodeURIComponent(decoded); } catch(e) {}
   const allowed = ["airbnb.com", "airbnb.fr", "booking.com", "ical.booking.com", "vrbo.com"];
-  if (!allowed.some((d) => decoded.includes(d))) return res.status(403).json({ error: "Domaine non autorisé" });
+  if (!allowed.some((d) => decoded.includes(d))) {
+    return res.status(403).json({ error: "Domaine non autorise: " + decoded.substring(0,60) });
+  }
   const client = decoded.startsWith("https") ? https : http;
-  const opts = { headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", "Accept": "text/calendar, */*" } };
+  const opts = { headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", "Accept": "text/calendar, */*" } };
   client.get(decoded, opts, (proxyRes) => {
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
     proxyRes.pipe(res);
   }).on("error", (err) => res.status(500).json({ error: err.message }));
 });
-app.listen(PORT, () => console.log("Proxy démarré sur le port " + PORT));
+app.listen(PORT, () => console.log("Proxy demarre sur le port " + PORT));
